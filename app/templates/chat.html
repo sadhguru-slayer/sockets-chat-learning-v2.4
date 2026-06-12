@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+
+    <link rel="stylesheet" href="/static/css/chat.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <div class="search-container">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search..."
+      >
+    </div>
+
+    <div class="tabs">
+      
+      <button class="tab-btn active" data-tab="groups">
+        Groups
+      </button>
+      <button class="tab-btn" data-tab="chats">
+        Chats
+      </button>
+    </div>
+
+    <div id="conversationList" class="conversation-list"></div>
+
+    <button id="addBtn" class="floating-btn">
+      +
+    </button>
+
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+
+    <div class="content-header">
+
+      <h2 id="conversationTitle" class="clickable-title">
+        Select a conversation
+      </h2>
+      <div class="menu-container">
+
+        <button id="menuBtn" class="menu-btn">
+          ⋮
+        </button>
+
+        <div id="menuDropdown" class="dropdown hidden">
+          <button id="leaveGroupBtn">
+            Leave Group
+          </button>
+          <button id="addMembersBtn">
+            Add members +
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="messagesContainer" class="messages-container">
+      <!-- Messages go here -->
+    </div>
+
+    <div class="message-input-container">
+      <input
+        type="text"
+        placeholder="Type a message..."
+      >
+      <button>Send</button>
+    </div>
+
+  </main>
+
+</div>
+
+<div id="actionModal" class="modal hidden">
+  <div class="modal-content small">
+    <h3>Choose Action</h3>
+
+    <button id="openCreateBtn">Create Group</button>
+    <button id="openJoinBtn">Join Group</button>
+
+    <button id="actionCancelBtn">Cancel</button>
+  </div>
+</div>
+<!-- ACTION PICKER MODAL -->
+
+
+<!-- CREATE GROUP MODAL -->
+<div id="createModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Create Group</h3>
+
+    <input type="text" id="createGroupName" placeholder="Group name" />
+    <input type="text" id="createParticipants" placeholder="Participant IDs (1,2,3)" />
+
+    <div class="modal-actions">
+      <button id="createCancelBtn">Cancel</button>
+      <button id="createSubmitBtn">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- JOIN GROUP MODAL -->
+<div id="joinModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Join Group</h3>
+
+    <input type="number" id="joinConversationId" placeholder="Conversation ID" />
+
+    <div class="modal-actions">
+      <button id="joinCancelBtn">Cancel</button>
+      <button id="joinSubmitBtn">Join</button>
+    </div>
+  </div>
+</div>
+
+
+<script src="/static/js/auth.js"></script>
+
+<script>
+    requireAuth();
+</script>
+
+<script>
+    const token = localStorage.getItem("access_token");
+</script>
+
+<script src="/static/js/chat.js"></script>
+
+</body>
+</html>

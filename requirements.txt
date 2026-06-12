@@ -1,0 +1,18 @@
+fastapi
+uvicorn
+sarvamai
+python-dotenv
+jinja2
+
+# WS
+websockets
+redis
+
+# For DB
+sqlalchemy
+aiosqlite
+python-jose[cryptography]
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+passlib
+python-multipart

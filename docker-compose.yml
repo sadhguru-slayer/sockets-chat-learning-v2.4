@@ -1,0 +1,30 @@
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi_app_v2.4
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      - redis
+
+    restart: unless-stopped
+
+    volumes:
+      - .:/app
+
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/chat.db
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-server-v2.4
+    restart: unless-stopped

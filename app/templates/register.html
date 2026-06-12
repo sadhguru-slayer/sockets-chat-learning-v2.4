@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', path='css/auth.css') }}"
+    >
+</head>
+<body>
+
+<div class="auth-container">
+
+    <div class="auth-header">
+        <h1>Create Account</h1>
+    </div>
+
+    <div class="auth-body">
+
+        <form id="registerForm">
+
+            <div class="form-group">
+                <label>Username</label>
+
+                <input
+                    type="text"
+                    id="username"
+                    required
+                >
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+
+                <input type="email" id="email" required>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+
+                <input
+                    type="password"
+                    id="password"
+                    required
+                >
+            </div>
+
+            <button
+                type="submit"
+                class="auth-btn"
+            >
+                Register
+            </button>
+
+        </form>
+
+        <div class="auth-footer">
+            Already have an account?
+            <a href="/login">
+                Login
+            </a>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+const form = document.getElementById("registerForm");
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const response = await fetch(
+        "/auth/register",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                username:
+                    document.getElementById("username").value,
+                email: 
+                    document.getElementById("email").value,
+                password:
+                    document.getElementById("password").value
+            })
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        alert(data.detail || "Registration failed");
+        return;
+    }
+
+    alert("Registration successful");
+
+    window.location.href = "/login";
+});
+</script>
+
+</body>
+</html>

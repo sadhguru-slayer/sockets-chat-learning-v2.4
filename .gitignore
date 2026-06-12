@@ -1,0 +1,68 @@
+# ======================
+# Python cache
+# ======================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ======================
+# Virtual environments
+# ======================
+venv/
+env/
+.env/
+.venv/
+
+# ======================
+# SQLite database (IMPORTANT)
+# ======================
+chat.db
+*.db
+*.sqlite
+*.sqlite3
+
+# ======================
+# Logs
+# ======================
+*.log
+
+# ======================
+# IDEs
+# ======================
+.vscode/
+.idea/
+
+# ======================
+# OS files
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# Docker (optional)
+# ======================
+*.pid
+
+# ======================
+# Environment variables
+# ======================
+.env
+
+# ======================
+# pytest / cache
+# ======================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ======================
+# static Python tooling
+# ======================
+.coverage
+htmlcov/
+
+# ======================
+# Redis dump (if ever generated locally)
+# ======================
+dump.rdb

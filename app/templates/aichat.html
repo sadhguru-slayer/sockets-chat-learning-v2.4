@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat</title>
+
+    <link rel="stylesheet" href="static/css/aichat.css">
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    >
+</head>
+<body>
+
+    <div class="chat-container">
+
+        <div class="chat-header">
+            <h1>AI Chat</h1>
+
+            <button id="newChatBtn">
+                New Chat
+            </button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages">
+            <div class="message ai">
+                Hello! How can I help you today?
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <input
+                type="text"
+                id="messageInput"
+                placeholder="Type your message..."
+            >
+
+            <button id="sendBtn">
+                Send
+            </button>
+        </div>
+
+    </div>
+ <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Code Highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <script src="static/js/aichat.js"></script>
+
+</body>
+</html>

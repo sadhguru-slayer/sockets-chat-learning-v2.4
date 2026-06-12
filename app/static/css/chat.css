@@ -1,0 +1,360 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 320px;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.search-container {
+  padding: 15px;
+}
+
+.search-container input {
+  width: 100%;
+  padding: 10px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: white;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.conversation-item:hover {
+  background: #f7f7f7;
+}
+
+.conversation-item.active {
+  background: #ececec;
+}
+
+.floating-btn {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+
+  width: 55px;
+  height: 55px;
+
+  border: none;
+  border-radius: 50%;
+
+  background: #007bff;
+  color: white;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-header {
+  height: 65px;
+  border-bottom: 1px solid #ddd;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 20px;
+}
+
+.menu-container {
+  position: relative;
+}
+
+.menu-btn {
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 40px;
+
+  background: white;
+  border: 1px solid #ddd;
+
+  min-width: 140px;
+}
+
+.dropdown button {
+  width: 100%;
+  border: none;
+  background: white;
+  padding: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdown button:hover {
+  background: #f5f5f5;
+}
+
+.hidden {
+  display: none;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.message-input-container {
+  display: flex;
+  gap: 10px;
+
+  padding: 15px;
+  border-top: 1px solid #ddd;
+}
+
+.message-input-container input {
+  flex: 1;
+  padding: 10px;
+}
+
+.message-input-container button {
+  padding: 10px 16px;
+}
+
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-content input {
+  padding: 10px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-content.small {
+  width: 250px;
+  text-align: center;
+}
+
+.modal-content button {
+  padding: 10px;
+  border: none;
+  cursor: pointer;
+  background: #007bff;
+  color: white;
+  border-radius: 5px;
+}
+/* From : adding users, chat info, group info, msgs rendering, online status */
+.info-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.info-header h2 {
+  font-size: 26px;
+  margin-bottom: 10px;
+}
+
+.info-section {
+  margin-bottom: 25px;
+}
+
+.info-section p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #444;
+}
+
+/* Members list */
+.member-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Member item (WhatsApp-like row) */
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 12px;
+  margin-bottom: 10px;
+
+  border-radius: 10px;
+  background: #fafafa;
+  border: 1px solid #eee;
+
+  transition: 0.2s ease;
+}
+
+.member-item:hover {
+  border-color: #007bff;
+  background: #f3f8ff;
+}
+
+/* Avatar */
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+
+  background: #007bff;
+  color: white;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-weight: bold;
+  font-size: 14px;
+}
+
+/* Text block */
+.member-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #222;
+}
+
+.member-meta {
+  font-size: 12px;
+  color: #777;
+  margin-top: 2px;
+}
+
+/* Blue accent consistency */
+.clickable-title:hover {
+  color: #007bff;
+}
+
+/* wrapper for avatar + dot */
+.avatar-wrapper {
+  position: relative;
+  width: 42px;
+  height: 42px;
+}
+
+/* keep avatar centered inside wrapper */
+.avatar-wrapper .avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #007bff;
+  color: white;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-weight: bold;
+  font-size: 14px;
+}
+
+/* status dot */
+.status-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+
+  border: 2px solid #fff;
+}
+
+/* online = green */
+.status-dot.online {
+  background: #28c76f;
+}
+
+/* offline = gray */
+.status-dot.offline {
+  background: #bbb;
+}
+
+/* If memberis YOU */
+.member-item.me {
+  background: #e8f3ff;
+  border: 1px solid #007bff;
+}
+
+.member-item.me:hover {
+  background: #dcebff;
+}
