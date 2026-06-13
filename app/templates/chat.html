@@ -50,7 +50,7 @@
       </h2>
       <div class="menu-container">
 
-        <button id="menuBtn" class="menu-btn">
+        <button id="menuBtn" class="menu-btn hidden">
           ⋮
         </button>
 
@@ -68,10 +68,24 @@
     </div>
 
     <div id="messagesContainer" class="messages-container">
-      <!-- Messages go here -->
-    </div>
+       <!-- static/components/messages.html -->
+<div id="messagesView" class="messages-view">
 
-    <div class="message-input-container">
+  <div id="messages"></div>
+</div>
+
+
+  <div id="infoView" class="hidden"></div>
+</div>
+
+    <div id="message-input-container" class="message-input-container hidden">
+      <div id="typingIndicator"
+
+         class="typing-indicator"
+
+         style="display:none">
+
+    </div>
       <input
         type="text"
         placeholder="Type a message..."

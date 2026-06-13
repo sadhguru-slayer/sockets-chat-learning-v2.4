@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, DateTime, ForeignKey, Boolean, Enum
-from datetime import datetime
+from datetime import datetime,timezone
 from .base import Base
 from .conversations import Conversation
 import enum
@@ -22,7 +22,7 @@ class User(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         index=True
     )
 
@@ -68,7 +68,7 @@ class ConversationParticipants(Base):
 
     joined_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc),
     )
 
     conversation = relationship(

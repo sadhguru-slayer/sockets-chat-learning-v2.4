@@ -35,7 +35,10 @@ const joinSubmitBtn = document.getElementById("joinSubmitBtn");
 
 // WS
 let latestOnlineUsers = [];
-
+const inputSection = document.getElementById("message-input-container");
+const messageInput = document.querySelector(".message-input-container input");
+const sendBtn = document.querySelector(".message-input-container button");
+let typingTimer = null;
 // ================= STATE =================
 let activeTab = "groups";
 let selectedConversation = null;
@@ -54,7 +57,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderList();
 });
 
+
+
+
 // ================= HELPERS =================
+
+function formatTime(ts) {
+    if (!ts) return "";
+
+    return new Date(ts).toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    });
+}
+function isMe(sender_id) {
+return sender_id === me.id;
+}
+
+function getMessageMeta(msg) {
+    return {
+        isMe: msg.sender_id === me.id,
+        isSystem: msg.type === "SYSTEM" || msg.type === "system",
+    };
+}
+
 function show(el) {
   el.classList.remove("hidden");
 }
@@ -160,7 +187,7 @@ async function connectWs(conversation) {
   }
 
   socket = new WebSocket(
-    `ws://localhost:8000/ws/${conversation.id}?token=${token}`
+    `ws://127.0.0.1:8000/ws/${conversation.id}?token=${token}`
   );
 
   socket.onopen = () => {
@@ -169,14 +196,26 @@ async function connectWs(conversation) {
 
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    // console.log("PARSED WS:", data);
     if (data.event === "online_users") {
       latestOnlineUsers = data.users;
       updateOnlineStatus(data.users);
     }
+    if (data.event === "typing") {
+  if (data.sender_id === me.id) return; // CRITICAL
+      renderTypingIndicator(data);
+}
+const allowedEvents = ["message.created", "leave", "join"];
 
-    if (data.event === "MESSAGE_CREATED") {
-      renderIncomingMessage(data);
-    }
+if (allowedEvents.includes(data.event)) {
+    renderMessage({
+        message: data.message,
+        sender_id: data.sender_id,
+        username: data.username,
+        timestamp: data.timestamp,
+        type: data.type || "CHAT"
+    });
+}
   };
 
   socket.onclose = (e) => {
@@ -185,12 +224,134 @@ async function connectWs(conversation) {
   };
 }
 
+function sendMessage() {
+  const text = messageInput.value.trim();
+  if (!text || !socket) return;
+
+  socket.send(JSON.stringify({
+    event: "message.created",
+    message: text
+  }));
+
+  messageInput.value = "";
+}
+// ============ TYPING ================
+
+
+
+sendBtn.addEventListener("click", sendMessage);
+
+messageInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+messageInput.addEventListener("input", () => {
+  if (!socket) return;
+
+  clearTimeout(typingTimer);
+
+  typingTimer = setTimeout(() => {
+    socket.send(JSON.stringify({
+      event: "typing"
+    }));
+  }, 200); // adjust delay as needed (200–500ms is typical)
+});
+
+
+function renderMessage(msg) {
+    const container = document.getElementById("messages");
+  if (!container) {
+        console.warn("messages container not mounted yet");
+        return;
+    }
+    console.log(msg);
+    const meta = getMessageMeta(msg);
+
+    const div = document.createElement("div");
+
+    if (meta.isSystem) {
+        div.className = "message system";
+        div.innerHTML = `
+            <div class="system-bubble">
+                ${escapeHtml(msg.message)}
+                <span class="time">${formatTime(msg.timestamp)}</span>
+            </div>
+        `;
+    }
+
+    else if (meta.isMe) {
+        div.className = "message me";
+        div.innerHTML = `
+            <div class="bubble me-bubble">
+                <div class="text">${escapeHtml(msg.message)}</div>
+                <div class="meta">
+                    <span class="time">${formatTime(msg.timestamp)}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    else {
+        div.className = "message other";
+        div.innerHTML = `
+            <div class="avatar-small">
+                ${getInitials(msg.username || "U")}
+            </div>
+
+            <div class="bubble other-bubble">
+                <div class="username">${escapeHtml(msg.username || "Unknown")}</div>
+                <div class="text">${escapeHtml(msg.message)}</div>
+                <div class="meta">
+                    <span class="time">${formatTime(msg.timestamp)}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function loadConversationHistory() {
+    if (!selectedConversation) return;
+
+    const container = document.getElementById("messages");
+
+    if (!container) {
+        console.warn("messages container not found. Component not mounted.");
+        return;
+    }
+
+    const response = await fetch(
+        `${API_URL}/chat/conversations/${selectedConversation.id}/messages`,
+        {
+            headers: { Authorization: `Bearer ${token}` }
+        }
+    );
+
+    const messages = await response.json();
+
+    container.innerHTML = "";
+
+    messages.forEach(msg => {
+        renderMessage({
+            message: msg.message,
+            sender_id: msg.sender_id,
+            username: msg.username,
+            timestamp: msg.timestamp,
+            type: msg.type
+        });
+    });
+}
+
 // ================= SELECT =================
 async function selectConversation(conversation) {
+  inputSection.classList = "message-input-container";
   selectedConversation = conversation;
 
   conversationTitle.textContent = conversation.name;
-
   leaveGroupBtn.style.display =
     conversation.type === "GROUP" ? "block" : "none";
 
@@ -198,9 +359,10 @@ async function selectConversation(conversation) {
     ["OWNER", "ADMIN"].includes(conversation.role)
       ? "block"
       : "none";
-
+  // await loadMessagesView();
+  menuBtn.classList.remove('hidden');
+  await loadConversationHistory();
   await connectWs(conversation);
-  await renderMessages();
   renderList();
 }
 
@@ -234,7 +396,6 @@ function updateOnlineStatus(users) {
 
 // open main action modal
 addBtn.addEventListener("click", () => {
-    
   show(actionModal);
 });
 
@@ -346,7 +507,7 @@ joinSubmitBtn.addEventListener("click", async () => {
 // ================= ADD MEMBERS ================
 
 document.getElementById("addMembersBtn").addEventListener("click", async () => {
-    console.log("Clicked");
+    // console.log("Clicked");
 
     const userId = prompt("Enter user ID");
     if (!userId) return;
@@ -411,6 +572,10 @@ leaveGroupBtn.addEventListener("click", async () => {
 
     selectedConversation = null;
     conversationTitle.textContent = "Select Chat";
+    messagesContainer.innerHTML="";
+    inputSection.classList = 'message-input-container hidden';
+    menuBtn.classList.add('hidden');
+    
 
     await fetchGroups();
   } catch (err) {
@@ -419,27 +584,49 @@ leaveGroupBtn.addEventListener("click", async () => {
 });
 
 // ================= UI EVENTS =================
+let typingTimeout = null;
+
+const typingUsers = new Map();
+
+function renderTypingIndicator(data) {
+  const el = document.getElementById("typingIndicator");
+  if (!el) return;
+
+  typingUsers.set(data.sender_id, data.username);
+
+  const names = Array.from(typingUsers.values());
+
+  el.textContent =
+    names.length === 1
+      ? `${names[0]} is typing...`
+      : `${names.join(", ")} are typing...`;
+
+  el.style.display = "block";
+
+  clearTimeout(window.typingTimeout);
+
+  window.typingTimeout = setTimeout(() => {
+    typingUsers.clear();
+    el.style.display = "none";
+  }, 1200);
+}
+
 async function loadComponent(path) {
+    // console.log("Loading:", path);
+
     const response = await fetch(path);
 
-    if (!response.ok) {
-        throw new Error(`Failed loading ${path}`);
-    }
+    // console.log("Response URL:", response.url);
+    // console.log("Status:", response.status);
 
-    return await response.text();
+    const text = await response.text();
+
+    // console.log("Response text:", text);
+
+    return text;
 }
 
-async function renderMessages() {
-    const html = await loadComponent(
-        "/static/components/messages.html"
-    );
 
-    messagesContainer.innerHTML = html;
-
-    document.getElementById(
-        "msgConversationName"
-    ).textContent = selectedConversation.name;
-}
 
 async function renderChatInfo() {
     const html = await loadComponent(
@@ -454,31 +641,56 @@ async function renderChatInfo() {
 }
 
 // =================== RENDER GROUP =================
+let activeMemberId = null;
+
 async function renderGroupInfo() {
-    const html = await loadComponent("/static/components/group-info.html");
-    messagesContainer.innerHTML = html;
+  const html = await loadComponent(
+    "/static/components/group-info.html"
+  );
+  const messageView = document.getElementById("messagesView")
+  messageView.classList.add("hidden");
+    const infoView = document.getElementById("infoView");
+
+    infoView.innerHTML = html;
+    infoView.classList.remove("hidden");
+    const menu = document.getElementById("memberMenu");
+const removeBtn = document.getElementById("removeMemberBtn");
+const extraBtn = document.getElementById("extraActionBtn");
 
     const { name, role, members = [] } = selectedConversation;
 
     const groupNameEl = document.getElementById("groupName");
     const groupRoleEl = document.getElementById("groupRole");
     const membersListEl = document.getElementById("membersList");
+    const closeBtn = document.getElementById("closeGroupInfoBtn");
+    // console.log(closeBtn)
 
     groupNameEl.textContent = name || "Unnamed Group";
-    groupRoleEl.textContent = role || "-";
+    groupRoleEl.textContent = role || "MEMBER";
 
     const sortedMembers = [
-    ...members.filter(m => m.id === me.id),
-    ...members.filter(m => m.id !== me.id)
+        ...members.filter(m => m.id === me.id),
+        ...members.filter(m => m.id !== me.id)
     ];
 
     membersListEl.innerHTML = sortedMembers
-    .map(renderMemberItem)
-    .join("");
+        .map(renderMemberItem)
+        .join("");
 
-    // 🔥 IMPORTANT: re-apply online status AFTER render
+    // Restore online status
     if (latestOnlineUsers.length > 0) {
         updateOnlineStatus(latestOnlineUsers);
+    }
+
+    // Close button
+    if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+    document.getElementById("infoView")
+        .classList.add("hidden");
+
+    document.getElementById("messagesView")
+        .classList.remove("hidden");
+      });
     }
 }
 
@@ -498,7 +710,7 @@ function renderMemberItem(member) {
                     ${initials}
                 </div>
 
-                <span class="status-dot ${isOnline ? "online" : "offline"}"></span>
+                <span class="status-dot ${isOnline ? "online" : ""}"></span>
             </div>
 
             <div class="member-info">
@@ -508,17 +720,127 @@ function renderMemberItem(member) {
 
                 <div class="member-meta">
                     <span class="role">${escapeHtml(role)}</span>
-                    • 
-                    <span class="status-text">
-                        ${isOnline || isMe ? "Online" : "Offline"}
-                    </span>
+                    
                     • ID: ${member.id}
                 </div>
             </div>
+             <div class="member-actions">
+                ${!isMe ?  `<button class="member-menu-btn" data-id="${member.id}">
+                
+                <div></div>
+                <div></div>
+                <div></div>
+                </button>` : ""}
+                </div>
 
         </li>
     `;
 }
+
+
+document.addEventListener("click", async (e) => {
+
+    // 3-dot menu click
+    if (e.target.closest(".member-menu-btn")) {
+
+        const btn = e.target.closest(".member-menu-btn");
+
+        activeMemberId = Number(btn.dataset.id);
+
+        const menu = document.getElementById("memberMenu");
+        const removeBtn = document.getElementById("removeMemberBtn");
+
+        if (!menu || !removeBtn) return;
+
+       const member = selectedConversation.members.find(
+    m => m.id === activeMemberId
+);
+
+const currentUserRole = selectedConversation.role;
+
+const canModerate =
+    currentUserRole === "ADMIN" ||
+    currentUserRole === "OWNER";
+
+const canRemove =
+    canModerate &&
+    member &&
+    member.id !== me.id &&                // can't remove yourself
+    member.role !== "ADMIN" &&            // can't remove admins
+    member.role !== "OWNER";              // can't remove owner
+
+removeBtn.style.display =
+    canRemove ? "block" : "none";
+
+        menu.style.top = `${e.pageY}px`;
+        menu.style.left = `${e.pageX}px`;
+
+        menu.classList.remove("hidden");
+
+        return;
+    }
+
+    // remove member click
+    if (e.target.id === "removeMemberBtn") {
+
+        if (!activeMemberId) return;
+
+        if (!confirm("Remove this member?")) return;
+
+        const res = await fetch(
+            `${API_URL}/chat/groups/remove-member`,
+            {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    group_id: selectedConversation.id,
+                    member_id: activeMemberId
+                })
+            }
+        );
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            alert(data.detail || "Failed");
+            return;
+        }
+
+        document
+            .getElementById("memberMenu")
+            ?.classList.add("hidden");
+
+        await fetchParticipants(selectedConversation.id);
+        await renderGroupInfo();
+
+        return;
+    }
+
+    // hide menu
+    const menu = document.getElementById("memberMenu");
+
+    if (
+        menu &&
+        !e.target.closest(".member-menu-btn") &&
+        !e.target.closest("#memberMenu")
+    ) {
+        menu.classList.add("hidden");
+    }
+});
+
+document.addEventListener("click", (e) => {
+    const menu = document.getElementById("memberMenu");
+    if (!menu) return;
+
+    if (!e.target.closest(".member-menu-btn") &&
+        !e.target.closest("#memberMenu")) {
+        menu.classList.add("hidden");
+    }
+});
+
 
 function getInitials(name) {
     return name
@@ -545,11 +867,13 @@ function escapeHtml(str) {
 conversationTitle.addEventListener(
     "click",
     async () => {
-        if (!selectedConversation) return;
-
-        if (
-            selectedConversation.type ===
-            "GROUP"
+      // console.log(selectedConversation);
+      if (!selectedConversation) return;
+      
+      // console.log(selectedConversation.type);
+      if (
+        selectedConversation.type ===
+        "GROUP"
         ) {
             await fetchParticipants(
                 selectedConversation.id

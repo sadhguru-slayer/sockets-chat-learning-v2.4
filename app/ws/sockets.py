@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import timezone
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
@@ -21,6 +21,13 @@ from app.dependencies.db import db_session
 
 router = APIRouter()
 
+async def is_member(db: db_session, conversation_id: int, user_id: int):
+    stmt = select(ConversationParticipants).where(
+        ConversationParticipants.conversation_id == conversation_id,
+        ConversationParticipants.user_id == user_id
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none() is not None
 
 @router.websocket('/ws/{conversation_id}')
 async def conversation_socket(
@@ -50,19 +57,27 @@ async def conversation_socket(
     if not connected:
         return
     
-    history = await MessageStore.get_history(str(conversation_id))
+    # history = await MessageStore.get_history(str(conversation_id))
 
-    for msg in history:
-        await ws.send_json(json.loads(msg))
+    # for msg in history:
+    #     await ws.send_json(json.loads(msg))
     try:
         while True:
             data = await ws.receive_json()
             event = data.get("event")
 
             if event == WSMessageEvent.MESSAGE_CREATED.value:
+                if not await is_member(db, conversation_id, user_id):
+                    await ws.send_json({
+                        "event": "error",
+                        "message": "You are no longer a member of this conversation."
+                    })
+                    await ws.close(code=1008)
+                    return
                 content = data.get("message","").strip()
                 if not content:
                     continue
+                
 
                 db_message = Message(
                     conversation_id=conversation_id,
@@ -81,7 +96,7 @@ async def conversation_socket(
                     "sender_id": user.id,
                     "username": user.username,
                     "message": content,
-                    "timestamp": db_message.timestamp.isoformat()
+                    "timestamp": db_message.timestamp.astimezone(timezone.utc).isoformat()
                 }
 
                 await MessageStore.save_message(
@@ -94,6 +109,9 @@ async def conversation_socket(
                     json.dumps(event_payload)
                 )
             elif event == "typing":
+                if not await is_member(db, conversation_id, user_id):
+                    await ws.close(code=1008)
+                    return
                 typing_payload = {
                     "event":"typing",
                     "conversation_id":conversation_id,

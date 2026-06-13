@@ -1,13 +1,13 @@
 from sqlalchemy import Text, ForeignKey, DateTime, Enum, Index, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from .base import Base
 import enum
 
 
 class MessageType(enum.Enum):
-    CHAT = "chat"
-    SYSTEM = "system"
+    CHAT = "CHAT"
+    SYSTEM = "SYSTEM"
 
 
 class MessageEventType(enum.Enum):
@@ -38,11 +38,11 @@ class Message(Base):
     )
 
     message: Mapped[str] = mapped_column(Text)
-    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted_global: Mapped[bool] = mapped_column(Boolean, default=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         index=True
     )
 
@@ -70,4 +70,4 @@ class MessageDeleteState(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
 
-    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc),)

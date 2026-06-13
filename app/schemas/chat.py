@@ -16,3 +16,7 @@ class DMRequest(BaseModel):
 class AddMember(BaseModel):
     group_id: int
     participants: List[int] = Field(default_factory=list)
+
+class RemoveMember(BaseModel):
+    group_id:int
+    member_id:int

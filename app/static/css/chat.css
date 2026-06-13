@@ -117,7 +117,7 @@ body {
   position: absolute;
   right: 0;
   top: 40px;
-
+  z-index: 100;
   background: white;
   border: 1px solid #ddd;
 
@@ -137,9 +137,6 @@ body {
   background: #f5f5f5;
 }
 
-.hidden {
-  display: none;
-}
 
 .messages-container {
   flex: 1;
@@ -218,6 +215,30 @@ body {
   margin: 0 auto;
   padding: 20px;
   font-family: Arial, sans-serif;
+}
+
+.info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: #666;
+    background-color: #bfa9a935;
+    padding: 4px 10px;
+    border-radius: 100%;
+  }
+  
+  
+  .close-btn:hover {
+    
+    background-color: #bfa9a96e;
+    color: #000;
 }
 
 .info-header h2 {
@@ -327,27 +348,28 @@ body {
 }
 
 /* status dot */
-.status-dot {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
+/* .status-dot {
+  
 
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-
-  border: 2px solid #fff;
-}
+} */
 
 /* online = green */
 .status-dot.online {
+  position: absolute;
+  top: 2px;
+  right: 0px;
+
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
   background: #28c76f;
 }
 
 /* offline = gray */
-.status-dot.offline {
+/* .status-dot.offline {
   background: #bbb;
-}
+} */
 
 /* If memberis YOU */
 .member-item.me {
@@ -357,4 +379,168 @@ body {
 
 .member-item.me:hover {
   background: #dcebff;
+}
+
+/* ============ MESSAGES ================= */
+.message {
+    display: flex;
+    margin-bottom: 10px;
+    align-items: flex-end;
+}
+
+/* RIGHT side (me) */
+.message.me {
+    justify-content: flex-end;
+}
+
+/* LEFT side (others) */
+.message.other {
+    justify-content: flex-start;
+}
+
+/* system centered */
+.message.system {
+    justify-content: center;
+}
+
+/* BUBBLES */
+.bubble {
+    max-width: 60%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    position: relative;
+    word-wrap: break-word;
+}
+
+/* me bubble */
+.me-bubble {
+    background: #007bff;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+/* other bubble */
+.other-bubble {
+    background: #f1f1f1;
+    color: #222;
+    border-bottom-left-radius: 4px;
+}
+
+/* username above other messages */
+.username {
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 2px;
+    color: #007bff;
+}
+
+/* time */
+.meta {
+    font-size: 10px;
+    margin-top: 4px;
+    opacity: 0.7;
+    text-align: right;
+}
+
+/* avatar (reuse your member style) */
+.avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #007bff;
+    color: white;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 11px;
+    margin-right: 8px;
+}
+
+/* Member */
+.member-actions {
+    margin-left: auto;
+    position: relative;
+}
+
+.member-menu {
+    position: fixed;
+
+    min-width: 140px;
+    background: #fff;
+
+    border: 1px solid #ddd;
+    border-radius: 8px;
+
+    padding: 6px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    z-index: 9999;
+
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+
+
+.member-menu.hidden {
+    display: none;
+}
+
+.member-menu-btn{
+    border: none;
+    background: transparent;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+
+.member-menu-btn{
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 100%;
+}
+.member-menu-btn div{
+  padding: 0;
+  margin: 0;
+  height:2px;
+  width: 2px;
+  background: #000;
+  border-radius: 100%;
+}
+
+.member-menu-btn:hover{
+  background: #c8e3ff;
+}
+
+
+.member-menu button {
+    border: none;
+    background: none;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.member-menu button:hover {
+    background: #f5f5f5;
+}
+
+#removeMemberBtn {
+    color: #dc3545;
+}
+
+.messages-container {
+    position: relative;
 }

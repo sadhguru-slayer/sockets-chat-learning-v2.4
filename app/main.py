@@ -117,7 +117,7 @@ async def redis_listener():
         if isinstance(channel, bytes):
             channel = channel.decode()
 
-        conversation_id = channel.split(":")[1]
+        conversation_id = int(channel.split(":")[1])
 
         await manager.broadcast(
             conversation_id,

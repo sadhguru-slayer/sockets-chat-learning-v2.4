@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, DateTime, Boolean, Enum
-from datetime import datetime
+from datetime import datetime,timezone
 from .base import Base
 import enum
 
@@ -21,7 +21,7 @@ class Conversation(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         index=True
     )
 
