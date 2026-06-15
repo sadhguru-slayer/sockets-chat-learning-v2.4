@@ -430,7 +430,7 @@ body {
 .username {
     font-size: 12px;
     font-weight: bold;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     color: #007bff;
 }
 
@@ -543,4 +543,89 @@ body {
 
 .messages-container {
     position: relative;
+}
+
+/* Message events, deletes  start*/
+.msg-actions {
+  position: absolute;
+  top: 30%;
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.2s ease;
+}
+
+.message:hover .msg-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dots-btn {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transform: rotate(90deg);
+  font-size: 18px;
+  transition: transform 0.2s ease;
+}
+
+.dots-btn:hover {
+  background: rgb(205, 205, 205);
+}
+
+.dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 22px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  min-width: 140px;
+  z-index: 10;
+}
+
+.dropdown.show {
+  display: block;
+}
+
+.dropdown button {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown button:hover {
+  background: #f2f2f2;
+}
+
+.msg-event {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.msg-event.edited {
+  color: #888;
+}
+
+.msg-event.deleted {
+  color: #d33;
+}
+
+.right-menu{
+  left:-25px
+}
+.left-menu{
+  right:-25px
 }

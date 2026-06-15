@@ -1,11 +1,11 @@
 # app/ws/manager.py
 
 from collections import defaultdict
-from fastapi import WebSocket
-from typing import Dict
 from dataclasses import dataclass
-from app.ws.events import WSMessageEvent
+from fastapi import WebSocket
 from app.redis_client import r
+import json
+
 
 @dataclass
 class Connection:
@@ -13,115 +13,78 @@ class Connection:
     username: str
 
 
-
-
 class ConnectionManager:
     def __init__(self):
-        # room_id (int) -> user_id -> list[Connection]
-        self.rooms: dict[int, dict[int, list[Connection]]] = defaultdict(dict)
+        self.users: dict[int, list[Connection]] = defaultdict(list)
 
     # ----------------------------
     # CONNECT
     # ----------------------------
-    async def connect(self, room_id: int, user_id: int, username: str, ws: WebSocket):
+    async def connect(self, user_id: int, username: str, ws: WebSocket):
         await ws.accept()
 
-        room = self.rooms[room_id]
+        first = user_id not in self.users
 
-        if user_id not in room:
-            room[user_id] = []
+        self.users[user_id].append(Connection(ws=ws, username=username))
 
-        room[user_id].append(Connection(ws=ws, username=username))
-
-        # ✅ Redis: mark user online
-        await r.sadd(f"conversation:{room_id}:online", user_id)
-
-        await self.send_online_users(room_id)
-        return True
+        if first:
+            await r.sadd("online_users", user_id)
+            await r.publish(
+                "presence",
+                json.dumps({
+                    "event": "presence",
+                    "user_id": user_id,
+                    "online": True
+                })
+            )
 
     # ----------------------------
     # DISCONNECT
     # ----------------------------
-    async def disconnect(self, room_id: int, user_id: int, ws: WebSocket):
-        room = self.rooms.get(room_id)
-        if not room:
+    async def disconnect(self, user_id: int, ws: WebSocket):
+        connections = self.users.get(user_id, [])
+
+        self.users[user_id] = [
+            c for c in connections if c.ws != ws
+        ]
+
+        if not self.users[user_id]:
+            self.users.pop(user_id, None)
+            await r.srem("online_users", user_id)
+            await r.publish(
+                "presence",
+                json.dumps({
+                    "event": "presence",
+                    "user_id": user_id,
+                    "online": False
+                })
+            )
+
+    # ----------------------------
+    # SEND TO USER (LOCAL ONLY)
+    # ----------------------------
+    async def send_to_user(self, user_id: int, payload: dict):
+        connections = self.users.get(user_id)
+        if not connections:
             return
-
-        connections = room.get(user_id, [])
-        room[user_id] = [c for c in connections if c.ws != ws]
-
-        if not room[user_id]:
-            room.pop(user_id, None)
-
-        if not room:
-            self.rooms.pop(room_id, None)
-
-        # ❗ if no more connections for user -> mark offline in Redis
-        still_online = await r.sismember(f"conversation:{room_id}:online", user_id)
-
-        if still_online:
-            # check if user has ANY active connection left
-            if user_id not in room:
-                await r.srem(f"conversation:{room_id}:online", user_id)
-
-        await self.send_online_users(room_id)
-
-    # ----------------------------
-    # SEND ONE USER
-    # ----------------------------
-    async def send_personal(self, ws: WebSocket, payload: dict):
-        await ws.send_json(payload)
-
-    # ----------------------------
-    # BROADCAST
-    # ----------------------------
-    async def broadcast(self, room_id: int, payload: dict):
-        room = self.rooms.get(room_id)
-        if not room:
-            return
+        print("📨 send_to_user CALLED:", user_id)
 
         dead = []
 
-        for user_id, conn_list in room.items():
-            for conn in conn_list:
-                try:
-                    await conn.ws.send_json(payload)
-                except Exception:
-                    dead.append((user_id, conn))
-
-        for user_id, conn in dead:
+        for conn in connections:
             try:
-                room[user_id].remove(conn)
-                if not room[user_id]:
-                    room.pop(user_id, None)
+                await conn.ws.send_json(payload)
+            except Exception:
+                dead.append(conn)
+
+        for conn in dead:
+            try:
+                self.users[user_id].remove(conn)
             except Exception:
                 pass
 
-    # ----------------------------
-    # ONLINE USERS (Redis SOURCE OF TRUTH)
-    # ----------------------------
-    async def send_online_users(self, room_id: int):
-        room = self.rooms.get(room_id, {})
+        if user_id in self.users and not self.users[user_id]:
+            self.users.pop(user_id, None)
 
-        # ✅ Redis is authoritative
-        online_ids = await r.smembers(f"conversation:{room_id}:online")
-        online_ids = {int(uid) for uid in online_ids}
-
-        users = [
-            {
-                "id": uid,
-                "username": conn_list[0].username
-            }
-            for uid, conn_list in room.items()
-            if uid in online_ids
-        ]
-
-        payload = {
-            "event": WSMessageEvent.ONLINE_USERS,
-            "users": users
-        }
-        print(payload)
-
-        await self.broadcast(room_id, payload)
 
 manager = ConnectionManager()

@@ -83,6 +83,99 @@ async def create_group(
         "conversation_id":conversation.id
     }
 
+@router.post("/dms")
+async def create_dm(
+    target_id: int,
+    db: db_session,
+    token: str = Depends(oauth2_scheme)
+):
+    token_user = await get_current_user(db, token)
+
+    if not token_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    if target_id == token_user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create DM with yourself"
+        )
+
+    target_user = await db.get(User, target_id)
+
+    if not target_user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # Check if DM already exists
+    existing_dm = await db.execute(
+        select(Conversation)
+        .join(
+            ConversationParticipants,
+            Conversation.id == ConversationParticipants.conversation_id
+        )
+        .where(
+            Conversation.type == ConversationType.PERSONAL,
+            ConversationParticipants.user_id.in_(
+                [token_user.id, target_id]
+            )
+        )
+    )
+
+    conversations = existing_dm.scalars().unique().all()
+
+    for conversation in conversations:
+        participants = await db.execute(
+            select(ConversationParticipants.user_id)
+            .where(
+                ConversationParticipants.conversation_id
+                == conversation.id
+            )
+        )
+
+        user_ids = set(participants.scalars().all())
+
+        if user_ids == {token_user.id, target_id}:
+            return {
+                "message": "DM already exists",
+                "conversation_id": conversation.id
+            }
+
+    # Create DM
+    conversation = Conversation(
+        type=ConversationType.PERSONAL
+    )
+
+    db.add(conversation)
+    await db.flush()
+
+    db.add(
+        ConversationParticipants(
+            conversation_id=conversation.id,
+            user_id=token_user.id,
+            role=ParticipantRole.MEMBER
+        )
+    )
+
+    db.add(
+        ConversationParticipants(
+            conversation_id=conversation.id,
+            user_id=target_id,
+            role=ParticipantRole.MEMBER
+        )
+    )
+
+    await db.commit()
+
+    return {
+        "message": "DM created",
+        "conversation_id": conversation.id
+    }
+
 @router.post('/groups/join')
 async def join_group(
     payload:JoinGroupSchema,
@@ -264,7 +357,7 @@ async def remove_member(
     is_admin = is_admin_result.scalar_one_or_none()
     if not is_admin:
         raise HTTPException(status_code=403, detail="You are not part of this group")
-    print(is_admin.role, is_admin.user_id,ParticipantRole.OWNER == is_admin.role)
+    # print(is_admin.role, is_admin.user_id,ParticipantRole.OWNER == is_admin.role)
     if is_admin.role not in [
         ParticipantRole.OWNER,
         ParticipantRole.ADMIN
@@ -331,13 +424,18 @@ async def get_participant_details(
         "role": participant.role.value,
     }
 
+@router.get('/messages')
+async def get_all_messages(db:db_session):
+    stmt = select(Message)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 @router.delete('/conversation/{conversation_id}/delete-conversation')
 async def delete_group(
     db: db_session,
     conversation_id: int,
-    token: str = Depends(oauth2_scheme)
+    # token: str = Depends(oauth2_scheme)
 ):
-    current_user = await get_current_user(db, token)
+    # current_user = await get_current_user(db, token)
 
     stmt = select(Conversation).where(Conversation.id == conversation_id)
     result = await db.execute(stmt)
@@ -347,19 +445,19 @@ async def delete_group(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # check if user is OWNER
-    stmt_owner = select(ConversationParticipants).where(
-        ConversationParticipants.conversation_id == conversation_id,
-        ConversationParticipants.user_id == current_user.id
-    )
+    # stmt_owner = select(ConversationParticipants).where(
+        # ConversationParticipants.conversation_id == conversation_id,
+        # ConversationParticipants.user_id == current_user.id
+    # )
 
-    res = await db.execute(stmt_owner)
-    participant = res.scalar_one_or_none()
-
-    if not participant or participant.role != ParticipantRole.OWNER:
-        raise HTTPException(
-            status_code=403,
-            detail="Only owner can delete conversation"
-        )
+    # res = await db.execute(stmt_owner)
+    # participant = res.scalar_one_or_none()
+# 
+    # if not participant or participant.role != ParticipantRole.OWNER:
+        # raise HTTPException(
+            # status_code=403,
+            # detail="Only owner can delete conversation"
+        # )
 
     await db.delete(conversation)
     await db.commit()
@@ -410,7 +508,7 @@ async def get_messages(
 
     results = await db.execute(query)
 
-    return [
+    ans = [
             {
                 "id": m.id,
                 "sender_id": m.sender_id,
@@ -421,6 +519,8 @@ async def get_messages(
             }
             for m, user in results.all()
         ]
+    # print(ans)
+    return ans
 
 
 @router.get("/groups/{group_id}")
@@ -530,6 +630,9 @@ async def fetch_group_members(
     )
     participants_result = await db.execute(participants_stmt)
     participants = participants_result.scalars().all()
+
+    online_users = await r.smembers("online_users")
+    online_users = {int(uid) for uid in online_users}
     
 
     return [
@@ -537,7 +640,7 @@ async def fetch_group_members(
             id=p.user.id,
             username=p.user.username,
             role=p.role.value,  # MEMBER / ADMIN / OWNER
-            status="offline"
+            status="online" if p.user_id in online_users else "offline"
         )
         for p in participants
     ]
@@ -576,4 +679,51 @@ async def get_user_groups(
             "role": role.value
         }
         for g, role in groups
+    ]
+
+@router.get("/dms")
+async def get_user_dms(
+    db: db_session,
+    token: str = Depends(oauth2_scheme)
+):
+    token_user = await get_current_user(db, token)
+
+    if not token_user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    stmt = (
+        select(
+            Conversation.id,
+            User.username
+        )
+        .select_from(Conversation)
+        .join(
+            ConversationParticipants,
+            Conversation.id == ConversationParticipants.conversation_id
+        )
+        .join(
+            User,
+            User.id == ConversationParticipants.user_id
+        )
+        .where(
+            Conversation.type == ConversationType.PERSONAL,
+            Conversation.id.in_(
+                select(ConversationParticipants.conversation_id).where(
+                    ConversationParticipants.user_id == token_user.id
+                )
+            ),
+            ConversationParticipants.user_id != token_user.id
+        )
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return [
+        {
+            "id": conversation_id,
+            "name": username,
+            "type": ConversationType.PERSONAL.value,
+        }
+        for conversation_id, username in rows
     ]

@@ -7,6 +7,7 @@ class CreateGroupSchema(BaseModel):
     participants: List[int] = Field(default_factory=list)
 
 
+
 class JoinGroupSchema(BaseModel):
     conversation_id: int
 
