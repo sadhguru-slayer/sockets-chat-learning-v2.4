@@ -235,24 +235,49 @@ function renderList() {
   });
 }
 
+const typingTimeouts = {};
+
 function updateConversationTyping(conversationId, username) {
   const conversations = data[activeTab];
-  console.log(conversations);
 
   const conversation = conversations.find(
     (item) => item.id === conversationId
   );
-  console.log(conversation);
+
   if (!conversation) return;
 
+  // Store original message only once
+  if (!conversation._previousLatestMessage) {
+    conversation._previousLatestMessage = {
+      ...conversation.latest_message
+    };
+  }
+
   conversation.latest_message = {
-    sender: "",
-    content: `${username} is typing...`,
+    sender: username,
+    content: "typing...",
     timestamp: Date.now(),
     typing: true
   };
 
   renderList();
+
+  // Reset timeout
+  clearTimeout(typingTimeouts[conversationId]);
+
+  typingTimeouts[conversationId] = setTimeout(() => {
+    if (
+      conversation.latest_message &&
+      conversation.latest_message.typing
+    ) {
+      conversation.latest_message =
+        conversation._previousLatestMessage;
+
+      conversation._previousLatestMessage = null;
+
+      renderList();
+    }
+  }, 500); // 3 seconds after last typing event
 }
 
 function updateConversationPreview(conversationId, latestMessage) {
@@ -308,6 +333,7 @@ async function connectWs() {
       if (data.sender_id === me.id) {
         return;
       }
+      console.log(data);
       updateConversationTyping(
     data.conversation_id,
     data.username
@@ -321,31 +347,37 @@ async function connectWs() {
     // -------------------------
     // MESSAGE CREATED
     // -------------------------
-    if (data.event === "message.created") {
-      console.log(data.conversation_id)
-        updateConversationPreview(data.conversation_id, {
-            sender: data.username,
-            content: data.message,
-            timestamp: data.timestamp
-        });
-        if(selectedConversation){
-          renderMessage({
-            id: data.message_id,
-          
-            message: data.message,
-          
-            sender_id: data.sender_id,
-          
-            username: data.username,
-          
-            timestamp: data.timestamp,
-          
-            type: data.type || "CHAT",
-          });
-        }
+if (data.event === "message.created") {
 
-      return;
+    clearTimeout(typingTimeouts[data.conversation_id]);
+
+    const conversation = data[activeTab]?.find(
+      item => item.id === data.conversation_id
+    );
+
+    if (conversation) {
+      conversation.previousLatestMessage = null;
     }
+
+    updateConversationPreview(data.conversation_id, {
+        sender: data.username,
+        content: data.message,
+        timestamp: data.timestamp
+    });
+
+    if (selectedConversation) {
+      renderMessage({
+        id: data.message_id,
+        message: data.message,
+        sender_id: data.sender_id,
+        username: data.username,
+        timestamp: data.timestamp,
+        type: data.type || "CHAT",
+      });
+    }
+
+    return;
+}
 
     // -------------------------
     // MESSAGE EDITED

@@ -147,11 +147,6 @@ async def websocket_endpoint(
                     )
                 }
 
-                await MessageStore.save_message(
-                    str(conversation_id),
-                    event_payload
-                )
-
                 await r.publish(
                     f"conversation:{conversation_id}",
                     json.dumps(event_payload)
@@ -378,6 +373,7 @@ async def websocket_endpoint(
                     f"conversation:{conversation_id}",
                     json.dumps(typing_payload)
                 )
+            
             elif event == "conversation.joined":
 
                 conversation_id = data["conversation_id"]

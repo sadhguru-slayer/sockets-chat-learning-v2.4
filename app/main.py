@@ -144,7 +144,6 @@ async def redis_listener():
         # =========================
         # 1. PRESENCE STREAM
         # =========================
-        print("Channel",channel)
         if channel.startswith("presence"):
         
             target_user_id = payload["user_id"]
