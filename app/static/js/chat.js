@@ -39,6 +39,8 @@ const inputSection = document.getElementById("message-input-container");
 const messageInput = document.querySelector(".message-input-container input");
 const sendBtn = document.querySelector(".message-input-container button");
 let typingTimer = null;
+let editingMessageId = null;
+
 // ================= STATE =================
 let activeTab = "groups";
 let selectedConversation = null;
@@ -53,10 +55,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await requireAuth();
   me = await getMe();
   await connectWs();
-  await Promise.all([
-    fetchGroups(),
-    fetchDMs(),
-  ]);
+  await Promise.all([fetchGroups(), fetchDMs()]);
 
   renderList();
 });
@@ -78,6 +77,8 @@ function isMe(sender_id) {
 
 function getMessageMeta(msg) {
   return {
+    message_id: msg.id,
+    message: msg.message,
     isMe: msg.sender_id === me.id,
     isSystem: msg.type === "SYSTEM" || msg.type === "system",
   };
@@ -113,10 +114,11 @@ async function fetchDMs() {
 
     data.chats = dms.map((chat) => ({
       id: chat.id,
-      name: chat.name,       // other user's username
+      name: chat.name, // other user's username
       type: chat.type,
       role: null,
       user_id: chat.user_id, // optional
+      latest_message:chat.latest_message
     }));
 
     if (activeTab === "chats") {
@@ -144,12 +146,12 @@ async function fetchGroups() {
       throw new Error("Failed to load groups");
     }
     const groups = await response.json();
-
     data.groups = groups.map((group) => ({
       id: group.id,
       name: group.title,
       type: group.type,
       role: group.role,
+      latest_message:group.latest_message
     }));
 
     if (activeTab === "groups") {
@@ -199,11 +201,31 @@ function renderList() {
     const div = document.createElement("div");
     div.className = "conversation-item";
 
+    // Associate conversation id
+    div.dataset.id = item.id;
+
     if (selectedConversation && selectedConversation.id === item.id) {
       div.classList.add("active");
     }
 
-    div.innerHTML = `<strong>${item.name}</strong>`;
+    const latest = item.latest_message;
+
+    div.innerHTML = `
+      <div class="conversation-header">
+        <strong>${item.name || item.title}</strong>
+      </div>
+
+      <div class="conversation-preview flex gap-2 ml-2 mt-1">
+        ${
+          latest
+            ? `<span class="sender text-xs">${latest.sender}:</span>
+               <span class="message text-xs">${latest.content}</span>
+               <span class="message text-xs">${formatTime(latest.timestamp)}</span>
+               `
+            : `<span class="message">No messages yet</span>`
+        }
+      </div>
+    `;
 
     div.addEventListener("click", () => {
       selectConversation(item);
@@ -211,6 +233,43 @@ function renderList() {
 
     conversationList.appendChild(div);
   });
+}
+
+function updateConversationTyping(conversationId, username) {
+  const conversations = data[activeTab];
+  console.log(conversations);
+
+  const conversation = conversations.find(
+    (item) => item.id === conversationId
+  );
+  console.log(conversation);
+  if (!conversation) return;
+
+  conversation.latest_message = {
+    sender: "",
+    content: `${username} is typing...`,
+    timestamp: Date.now(),
+    typing: true
+  };
+
+  renderList();
+}
+
+function updateConversationPreview(conversationId, latestMessage) {
+  const conversations = data[activeTab];
+
+  const conversation = conversations.find(
+    (item) => item.id === conversationId
+  );
+
+  if (!conversation) return;
+
+  conversation.latest_message = {
+    ...(conversation.latest_message || {}),
+    ...latestMessage
+  };
+
+  renderList();
 }
 
 // ===================== WS ================
@@ -226,64 +285,165 @@ async function connectWs() {
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
-    if (
-      data.conversation_id &&
-      (!selectedConversation ||
-        data.conversation_id !== selectedConversation.id)
-    ) {
-      console.log("message for another conversation");
+
+    // -------------------------
+    // PRESENCE
+    // -------------------------
+    if (data.event === "presence") {
+      if (selectedConversation && selectedConversation.type !== "GROUP") {
+        if (data.online) {
+          showOnlineBadge(data.user_id);
+        } else {
+          hideOnlineBadge(data.user_id);
+        }
+      }
 
       return;
     }
 
-    if (data.event === "presence" && selectedConversation.type != "GROUP") {
-  if (data.online) {
-    showOnlineBadge(data.user_id);
-  } else {
-    hideOnlineBadge(data.user_id);
-  }
-}
-
+    // -------------------------
+    // TYPING
+    // -------------------------
     if (data.event === "typing") {
-      if (data.sender_id === me.id) return;
+      if (data.sender_id === me.id) {
+        return;
+      }
+      updateConversationTyping(
+    data.conversation_id,
+    data.username
+  );
 
       renderTypingIndicator(data);
+
       return;
     }
 
-    const allowedEvents = ["message.created", "leave", "join"];
+    // -------------------------
+    // MESSAGE CREATED
+    // -------------------------
+    if (data.event === "message.created") {
+      console.log(data.conversation_id)
+        updateConversationPreview(data.conversation_id, {
+            sender: data.username,
+            content: data.message,
+            timestamp: data.timestamp
+        });
+        if(selectedConversation){
+          renderMessage({
+            id: data.message_id,
+          
+            message: data.message,
+          
+            sender_id: data.sender_id,
+          
+            username: data.username,
+          
+            timestamp: data.timestamp,
+          
+            type: data.type || "CHAT",
+          });
+        }
 
-    if (allowedEvents.includes(data.event)) {
+      return;
+    }
+
+    // -------------------------
+    // MESSAGE EDITED
+    // -------------------------
+    if (data.event === "message.edited") {
+      updateConversationPreview(data.conversation_id, {
+            sender: data.username,
+            content: data.message,
+            timestamp: data.timestamp
+        });
+      updateEditedMessage(data);
+
+      return;
+    }
+
+    // -------------------------
+    // DELETE FOR EVERYONE
+    // -------------------------
+    if (data.event === "message.deleted_for_everyone") {
+      updateConversationPreview(data.conversation_id, {
+            content: data.message
+        });
+      deleteMessageForEveryone(data.message_id);
+
+      return;
+    }
+
+    // -------------------------
+    // DELETE FOR ME
+    // -------------------------
+    if (data.event === "message.deleted_for_me") {
+      removeMessage(data.message_id);
+
+      return;
+    }
+
+    // -------------------------
+    // OTHER EVENTS
+    // -------------------------
+    if (data.event === "leave" || data.event === "join") {
       renderMessage({
         message: data.message,
+
         sender_id: data.sender_id,
+
         username: data.username,
+
         timestamp: data.timestamp,
-        type: data.type || "CHAT",
+
+        type: "SYSTEM",
       });
+
+      return;
     }
   };
 
   socket.onclose = (e) => {
     console.log("WS closed:", e.code, e.reason);
-    
+
     socket = null;
   };
 }
 
 function sendMessage() {
   const text = messageInput.value.trim();
+
   if (!text || !socket) return;
 
-  socket.send(
-    JSON.stringify({
-      event: "message.created",
-      conversation_id: selectedConversation.id,
-      message: text,
-    }),
-  );
+  if (editingMessageId) {
+    socket.send(
+      JSON.stringify({
+        event: "message.edited",
+        conversation_id: selectedConversation.id,
+        message_id: editingMessageId,
+        message: text,
+      }),
+    );
+
+    editingMessageId = null;
+  } else {
+    socket.send(
+      JSON.stringify({
+        event: "message.created",
+        conversation_id: selectedConversation.id,
+        message: text,
+      }),
+    );
+  }
 
   messageInput.value = "";
+
+  if (sendBtn) {
+    sendBtn.innerText = "Send";
+  }
+
+  document.querySelectorAll(".editing").forEach((el) => {
+    el.classList.remove("editing");
+  });
 }
 
 // ============ TYPING ================
@@ -313,58 +473,90 @@ messageInput.addEventListener("input", () => {
 
 function renderMessage(msg) {
   const container = document.getElementById("messages");
-  if (!container) {
-    console.warn("messages container not mounted yet");
-    return;
-  }
+
+  if (!container) return;
 
   const meta = getMessageMeta(msg);
 
   const div = document.createElement("div");
-  div.className = `message ${meta.isSystem ? "system" : meta.isMe ? "me" : "other"}`;
+
+  div.dataset.messageId = msg.id || msg.message_id;
+
+  div.className = `message ${
+    meta.isSystem ? "system" : meta.isMe ? "me" : "other"
+  }`;
 
   const isMe = meta.isMe;
-
-  const messageText = escapeHtml(msg.message || "");
+  const isDeleted =
+    msg.deleted_for_everyone === true ||
+    msg.event === "message.deleted_for_everyone";
+  const messageText = isDeleted
+    ? "Deleted for everyone"
+    : escapeHtml(msg.message || "");
   const time = formatTime(msg.timestamp);
 
   // -------------------------
   // EVENT BADGES (edited / deleted)
   // -------------------------
+  const isGroup = selectedConversation?.type === "GROUP";
+  const isAdmin = selectedConversation?.role === "ADMIN";
+  const isOwner = selectedConversation?.role === "OWNER";
+
   let eventBadges = "";
-  const isGroup = selectedConversation.type === "GROUP";
-  if (msg.deleted_for_everyone) {
-    eventBadges += `<span class="msg-event deleted">This message was deleted</span>`;
-  } else {
-    if (msg.edited) {
-      eventBadges += `<span class="msg-event edited">edited</span>`;
-    }
+  const isEdited = !!msg.edited_at;
+  if (isDeleted) {
+    eventBadges += `
+    <span class="msg-event deleted">
+      Deleted for everyone
+    </span>
+  `;
+  } else if (isEdited) {
+    eventBadges += `
+    <span class="msg-event edited">
+      Edited
+    </span>
+  `;
   }
 
   // -------------------------
   // DROPDOWN ACTIONS
   // -------------------------
-  const dropdownId = `dd-${msg.id || Math.random()}`;
+  const messageId = msg.id || msg.message_id;
 
-  const dropdown = `
+  const dropdownId = `dd-${messageId}`;
+
+  const dropdown = isDeleted
+    ? ""
+    : `
   <div class="msg-actions ${isMe ? "right-menu" : "left-menu"}">
       <button class="dots-btn" onclick="toggleDropdown('${dropdownId}')">⋮</button>
 
       <div class="dropdown" id="${dropdownId}">
         
-        <button onclick="deleteForMe('${msg.id}')">
-          Delete for me
-        </button>
+        <button onclick="deleteForMe('${messageId}')">
+  Delete for me
+</button>
 
-        ${isMe ? `
-          <button onclick="deleteForEveryone('${msg.id}')">
-            Delete for everyone
-          </button>
+        
+          ${
+            isMe || isAdmin || isOwner
+              ? `
+      <button onclick="deleteForEveryone('${messageId}')">
+        Delete for everyone
+      </button>
+    `
+              : ""
+          }
 
-          <button onclick="editMessage('${msg.id}')">
-            Edit
-          </button>
-        ` : ""}
+${
+  isMe
+    ? `
+      <button onclick="editMessage('${messageId}')">
+        Edit
+      </button>
+    `
+    : ""
+}
       </div>
     </div>
   `;
@@ -385,7 +577,9 @@ function renderMessage(msg) {
         
         ${dropdown}
 
-        <div class="text">${messageText}</div>
+        <div class="text ${isDeleted ? "deleted-text" : ""}">
+  ${messageText}
+</div>
 
         ${eventBadges}
 
@@ -396,9 +590,13 @@ function renderMessage(msg) {
     `;
   } else {
     div.innerHTML = `
-        ${isGroup ? `<div class="avatar-small" data-username={msg.username || "U}>
+        ${
+          isGroup
+            ? `<div class="avatar-small" data-username={msg.username || "U}>
         ${getInitials(msg.username || "U")}
-      </div>` : ""}
+      </div>`
+            : ""
+        }
 
       
 
@@ -406,8 +604,9 @@ function renderMessage(msg) {
 
         ${dropdown}
         ${isGroup ? `<div class="username">${escapeHtml(msg.username || "Unknown")}</div>` : ""}
-        <div class="text">${messageText}</div>
-
+        <div class="text ${isDeleted ? "deleted-text" : ""}">
+  ${messageText}
+</div>
         ${eventBadges}
 
         <div class="meta">
@@ -420,12 +619,13 @@ function renderMessage(msg) {
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
+
 function toggleDropdown(id) {
   const el = document.getElementById(id);
   if (!el) return;
 
   // close other dropdowns
-  document.querySelectorAll(".dropdown").forEach(d => {
+  document.querySelectorAll(".dropdown").forEach((d) => {
     if (d.id !== id) d.classList.remove("show");
   });
 
@@ -435,9 +635,138 @@ function toggleDropdown(id) {
 // close on outside click
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".msg-actions")) {
-    document.querySelectorAll(".dropdown").forEach(d => d.classList.remove("show"));
+    document
+      .querySelectorAll(".dropdown")
+      .forEach((d) => d.classList.remove("show"));
   }
 });
+
+function updateEditedMessage(data) {
+  const element = document.querySelector(
+    `[data-message-id="${data.message_id}"]`,
+  );
+
+  if (!element) return;
+
+  const text = element.querySelector(".text");
+
+  if (text) {
+    text.innerText = data.message;
+  }
+
+  let badge = element.querySelector(".msg-event.edited");
+
+  if (!badge) {
+    element.querySelector(".meta").insertAdjacentHTML(
+      "beforebegin",
+      `
+        <span class="msg-event edited">
+          Edited
+        </span>
+        `,
+    );
+  }
+}
+
+function removeMessage(messageId) {
+  const element = document.querySelector(`[data-message-id="${messageId}"]`);
+
+  if (element) {
+    element.remove();
+  }
+}
+
+function deleteMessageForEveryone(messageId) {
+  const element = document.querySelector(`[data-message-id="${messageId}"]`);
+
+  if (!element) return;
+
+  const text = element.querySelector(".text");
+
+  if (text) {
+    text.innerText = "Deleted for everyone";
+
+    text.classList.add("deleted-text");
+  }
+
+  const dropdown = element.querySelector(".msg-actions");
+
+  if (dropdown) {
+    dropdown.remove();
+  }
+
+  const bubble = element.querySelector(".bubble");
+
+  if (bubble) {
+    bubble.insertAdjacentHTML(
+      "beforeend",
+      `
+      <span class="msg-event deleted">
+        Deleted for everyone
+      </span>
+      `,
+    );
+  }
+}
+
+function deleteForMe(messageId) {
+  socket.send(
+    JSON.stringify({
+      event: "message.deleted_for_me",
+      conversation_id: selectedConversation.id,
+      message_id: Number(messageId),
+    }),
+  );
+}
+function deleteForEveryone(messageId) {
+  socket.send(
+    JSON.stringify({
+      event: "message.deleted_for_everyone",
+      conversation_id: selectedConversation.id,
+      message_id: Number(messageId),
+    }),
+  );
+}
+
+function editMessage(messageId) {
+  const messageElement = document.querySelector(
+    `[data-message-id="${messageId}"]`,
+  );
+
+  if (!messageElement) {
+    console.warn("Message element not found:", messageId);
+    return;
+  }
+
+  const textElement = messageElement.querySelector(".text");
+
+  if (!textElement) {
+    console.warn("Message text element not found");
+    return;
+  }
+
+  if (!messageInput) {
+    console.warn("Message input not available");
+    return;
+  }
+
+  // store editing message id
+  editingMessageId = Number(messageId);
+
+  // load existing message
+  messageInput.value = textElement.innerText.trim();
+
+  // focus input
+  messageInput.focus();
+
+  // mark UI as editing
+  messageElement.classList.add("editing");
+
+  // change button state
+  if (sendBtn) {
+    sendBtn.innerText = "Update";
+  }
+}
 
 async function loadConversationHistory() {
   if (!selectedConversation) return;
@@ -445,29 +774,41 @@ async function loadConversationHistory() {
   const container = document.getElementById("messages");
 
   if (!container) {
-    console.warn("messages container not found. Component not mounted.");
+    console.warn("messages container not found.");
     return;
   }
 
   const response = await fetch(
     `${API_URL}/chat/conversations/${selectedConversation.id}/messages`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     },
   );
 
-  const messages = await response.json();
+  const events = await response.json();
 
   container.innerHTML = "";
 
-  messages.forEach((msg) => {
-    renderMessage({
-      message: msg.message,
-      sender_id: msg.sender_id,
-      username: msg.username,
-      timestamp: msg.timestamp,
-      type: msg.type,
-    });
+  events.forEach((evt) => {
+    switch (evt.event) {
+      case "message.deleted_for_me":
+        // don't render
+        break;
+
+      case "message.deleted_for_everyone":
+        renderMessage({
+          ...evt.data,
+          deleted_for_everyone: true,
+        });
+        break;
+
+      case "message":
+      default:
+        renderMessage(evt.data);
+        break;
+    }
   });
 }
 
@@ -487,19 +828,23 @@ async function selectConversation(conversation) {
   // await loadMessagesView();
   menuBtn.classList.remove("hidden");
 
-if (selectedConversation.type === "PERSONAL") {
-  if (previous) {
-    socket.send(JSON.stringify({
-      event: "conversation.left",
-      conversation_id: previous.id,
-    }));
-  }
+  if (selectedConversation.type === "PERSONAL") {
+    if (previous) {
+      socket.send(
+        JSON.stringify({
+          event: "conversation.left",
+          conversation_id: previous.id,
+        }),
+      );
+    }
 
-  socket.send(JSON.stringify({
-    event: "conversation.joined",
-    conversation_id: conversation.id,
-  }));
-}
+    socket.send(
+      JSON.stringify({
+        event: "conversation.joined",
+        conversation_id: conversation.id,
+      }),
+    );
+  }
   await loadConversationHistory();
   renderList();
 }
@@ -509,16 +854,16 @@ function showOnlineBadge(userId) {
   const el = document.getElementById("userStatus");
 
   if (!el) return;
-  if(isMe(userId)) return;
+  if (isMe(userId)) return;
   el.classList.remove("hidden");
   el.innerText = "Online";
 }
 
 function hideOnlineBadge(userId) {
   const el = document.getElementById("userStatus");
-  
+
   if (!el) return;
-  if(isMe(userId)) return;
+  if (isMe(userId)) return;
 
   el.classList.add("hidden");
 }

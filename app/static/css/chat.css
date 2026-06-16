@@ -161,6 +161,23 @@ body {
   padding: 10px 16px;
 }
 
+.deleted-text {
+  font-style: italic;
+  color: #e1e1e1;
+}
+
+.msg-event.deleted {
+  display: none;
+}
+
+.other-bubble .deleted-text {
+  color: #777;
+  font-style: italic;
+}
+
+.msg-event.edited {
+  color: #483f3f;
+}
 
 .modal {
   position: fixed;
@@ -615,17 +632,39 @@ body {
   opacity: 0.7;
 }
 
-.msg-event.edited {
-  color: #888;
-}
 
-.msg-event.deleted {
-  color: #d33;
-}
 
 .right-menu{
   left:-25px
 }
 .left-menu{
   right:-25px
+}
+.conversation-item {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.conversation-item.active {
+    background: #e7f3ff;
+}
+
+.conversation-header {
+    font-size: 16px;
+    margin-bottom: 5px;
+}
+
+.conversation-preview {
+    color: #667781;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sender {
+    font-weight: 600;
+    margin-right: 4px;
+    color: #444;
 }

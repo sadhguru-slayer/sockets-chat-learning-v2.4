@@ -1,0 +1,11 @@
+@font-face {
+  font-family: 'EraserNimbusSans';
+  src: url('./NimbusSanL-Reg.woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'EraserNimbusSansFerrule';
+  src: url('./NimbusSanLFerrule-Reg.woff2');
+  font-display: swap;
+}

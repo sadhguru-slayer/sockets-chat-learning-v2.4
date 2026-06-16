@@ -429,6 +429,7 @@ async def get_all_messages(db:db_session):
     stmt = select(Message)
     result = await db.execute(stmt)
     return result.scalars().all()
+
 @router.delete('/conversation/{conversation_id}/delete-conversation')
 async def delete_group(
     db: db_session,
@@ -464,8 +465,8 @@ async def delete_group(
 
     return {"message": "Conversation deleted successfully"}
 
-from sqlalchemy import outerjoin
-    
+from sqlalchemy import outerjoin,and_
+from app.models.messages import MessageDeleteState
 @router.get("/conversations/{conversation_id}/messages")
 async def get_messages(
     conversation_id: int,
@@ -499,28 +500,87 @@ async def get_messages(
         raise HTTPException(403, "Not in group")
 
     query = (
-    select(Message, User)
-    .outerjoin(User, User.id == Message.sender_id)
-    .where(Message.conversation_id == conversation_id)
-    .order_by(Message.timestamp.asc())
-    .limit(100)
-)
+        select(
+            Message,
+            User,
+            MessageDeleteState.user_id.label("deleted_for_me")
+        )
+        .outerjoin(User, User.id == Message.sender_id)
+        .outerjoin(
+            MessageDeleteState,
+            and_(
+                MessageDeleteState.message_id == Message.id,
+                MessageDeleteState.user_id == token_user.id
+            )
+        )
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.timestamp.asc())
+        .limit(100)
+    )
 
     results = await db.execute(query)
+    events = []
 
-    ans = [
-            {
-                "id": m.id,
-                "sender_id": m.sender_id,
-                 "username": user.username if user else "System",
-                "message":m.message,
-                "timestamp": m.timestamp.astimezone(timezone.utc).isoformat() if m.timestamp else None,
-                "type": m.type
-            }
-            for m, user in results.all()
-        ]
-    # print(ans)
-    return ans
+    for message, user, deleted_for_me in results.all():
+        if deleted_for_me:
+            events.append({
+                "event":"message.deleted_for_me",
+                "data":{
+                    "message_id":message.id
+                }
+            })
+            continue
+
+        if message.is_deleted_global:
+            events.append(
+                {
+                    "event":"message.deleted_for_everyone",
+                    "data":{
+                        "message_id":message.id,
+                        "sender_id":message.sender_id,
+                        "username": user.username if user else "System",
+                        "message": "Deleted for everyone",
+                        "timestamp": (
+                            message.timestamp.astimezone(timezone.utc).isoformat()
+                            if message.timestamp else None
+                        ),
+                        "type": message.type.value
+                    }
+                }
+            )
+            continue
+        if message.edited_at and message.edited_at > message.timestamp:
+            events.append(
+                {
+                    "event": "message.edited",
+                    "data": {
+                        "message_id": message.id,
+                        "sender_id": message.sender_id,
+                        "username": user.username if user else "System",
+                        "message": message.message,
+                        "timestamp": message.timestamp.astimezone(timezone.utc).isoformat(),
+                        "edited_at": message.edited_at.astimezone(timezone.utc).isoformat(),
+                        "type": message.type.value,
+                    },
+                }
+            )
+            continue
+        events.append({
+            "event": "message",
+            "data": {
+            "message_id": message.id,
+            "sender_id": message.sender_id,
+            "username": user.username if user else "System",
+            "message": message.message,
+            "timestamp": (
+                message.timestamp.astimezone(timezone.utc).isoformat()
+                if message.timestamp else None
+            ),
+            "edited_at": message.edited_at.astimezone(timezone.utc).isoformat() if message.edited_at else None,
+            "type": message.type.value
+        }}
+        )
+    return events
 
 
 @router.get("/groups/{group_id}")
@@ -646,22 +706,53 @@ async def fetch_group_members(
     ]
 
 
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
+
 @router.get("/groups")
 async def get_user_groups(
     db: db_session,
     token: str = Depends(oauth2_scheme)
 ):
-
     token_user = await get_current_user(db, token)
 
     if not token_user:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    stmt = (
-        select(Conversation,
-               ConversationParticipants.role
+    # Subquery to get latest message id per group
+    latest_message_subquery = (
+        select(
+            Message.conversation_id,
+            func.max(Message.timestamp).label("latest_time")
         )
-        .join(ConversationParticipants)
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            Conversation,
+            ConversationParticipants.role,
+            Message,
+            User.username
+        )
+        .join(
+            ConversationParticipants,
+            ConversationParticipants.conversation_id == Conversation.id
+        )
+        .outerjoin(
+            latest_message_subquery,
+            latest_message_subquery.c.conversation_id == Conversation.id
+        )
+        .outerjoin(
+            Message,
+            (Message.conversation_id == Conversation.id) &
+            (Message.timestamp == latest_message_subquery.c.latest_time)
+        )
+        .outerjoin(
+            User,
+            User.id == Message.sender_id
+        )
         .where(
             ConversationParticipants.user_id == token_user.id,
             Conversation.type == ConversationType.GROUP
@@ -671,14 +762,20 @@ async def get_user_groups(
     result = await db.execute(stmt)
 
     groups = result.all()
+
     return [
         {
-            "id": g.id,
-            "title": g.title,
-            "type": g.type.value,
-            "role": role.value
+            "id": group.id,
+            "title": group.title,
+            "type": group.type.value,
+            "role": role.value,
+            "latest_message": {
+                "content": "Deleted for everyone" if message.is_deleted_global else message.message,
+                "timestamp": message.timestamp,
+                "sender": username.split(" ")[0] if username else None
+            } if message else None
         }
-        for g, role in groups
+        for group, role, message, username in groups
     ]
 
 @router.get("/dms")
@@ -691,12 +788,27 @@ async def get_user_dms(
     if not token_user:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+    latest_message_subquery = (
+        select(
+            Message.conversation_id,
+            func.max(Message.timestamp).label("latest_time")
+        )
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+
+    message_sender = aliased(User)
+
     stmt = (
         select(
             Conversation.id,
-            User.username
+            User.username,
+            Message,
+            message_sender.username
         )
         .select_from(Conversation)
+
+        # Get the other participant
         .join(
             ConversationParticipants,
             Conversation.id == ConversationParticipants.conversation_id
@@ -705,10 +817,29 @@ async def get_user_dms(
             User,
             User.id == ConversationParticipants.user_id
         )
+
+        # Latest message lookup
+        .outerjoin(
+            latest_message_subquery,
+            latest_message_subquery.c.conversation_id == Conversation.id
+        )
+        .outerjoin(
+            Message,
+            (Message.conversation_id == Conversation.id) &
+            (Message.timestamp == latest_message_subquery.c.latest_time)
+        )
+
+        # Sender of latest message
+        .outerjoin(
+            message_sender,
+            message_sender.id == Message.sender_id
+        )
+
         .where(
             Conversation.type == ConversationType.PERSONAL,
             Conversation.id.in_(
-                select(ConversationParticipants.conversation_id).where(
+                select(ConversationParticipants.conversation_id)
+                .where(
                     ConversationParticipants.user_id == token_user.id
                 )
             ),
@@ -724,6 +855,22 @@ async def get_user_dms(
             "id": conversation_id,
             "name": username,
             "type": ConversationType.PERSONAL.value,
+            "latest_message": {
+                    "sender": (
+                        "You"
+                        if latest_sender == token_user.username
+                        else latest_sender.split(" ")[0]
+                    ) if latest_sender else None,
+            "content": "Deleted for everyone" if message.is_deleted_global else message.message,
+            "timestamp": message.timestamp
+                } if message else None
         }
-        for conversation_id, username in rows
+        for (
+            conversation_id,
+            username,
+            message,
+            latest_sender
+        ) in rows
     ]
+
+

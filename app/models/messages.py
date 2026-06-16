@@ -9,14 +9,6 @@ class MessageType(enum.Enum):
     CHAT = "CHAT"
     SYSTEM = "SYSTEM"
 
-
-class MessageEventType(enum.Enum):
-    CREATED = "message.created"
-    EDITED = "message.edited"
-    DELETED_FOR_ME = "message.deleted_for_me"
-    DELETED_FOR_EVERYONE = "message.deleted_for_everyone"
-
-
 class Message(Base):
     __tablename__ = "messages"
 
@@ -66,8 +58,14 @@ class Message(Base):
 
 class MessageDeleteState(Base):
     __tablename__ = "message_delete_state"
-
-    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True
+    )
+    
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True
+    )
 
     deleted_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc),)
