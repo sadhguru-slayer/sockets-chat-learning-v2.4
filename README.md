@@ -7,8 +7,9 @@ This is a scalable real-time chat application built with FastAPI and WebSockets.
 
 1. **Clone the repository:**
    ```bash
+   mkdir chat_app # You can choose the name of your liking
    git clone <repository-url>
-   cd v2.4_scale_rough
+   cd chat_app
    ```
 
 2. **Set up a virtual environment:**
