@@ -315,6 +315,7 @@ async function connectWs() {
     // PRESENCE
     // -------------------------
     if (data.event === "presence") {
+      console.log(data)
       if (selectedConversation && selectedConversation.type !== "GROUP") {
         if (data.online) {
           showOnlineBadge(data.user_id);
@@ -861,6 +862,7 @@ async function selectConversation(conversation) {
   menuBtn.classList.remove("hidden");
 
   if (selectedConversation.type === "PERSONAL") {
+    console.log(previous);
     if (previous) {
       socket.send(
         JSON.stringify({

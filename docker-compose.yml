@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: fastapi_app_v2.4
+    container_name: v2.4_scale
 
     ports:
       - "8000:8000"
@@ -26,5 +26,5 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis-server-v2.4
+    container_name: redis-server-v2.4-scale
     restart: unless-stopped

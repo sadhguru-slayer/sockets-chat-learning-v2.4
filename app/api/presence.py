@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.services.presence import is_online
+from app.services.presence_cache import PresenceCache
 
 router = APIRouter()
 

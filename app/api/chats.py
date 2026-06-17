@@ -12,7 +12,7 @@ from app.schemas.user import ConversationParticipantResponse
 from app.ws.manager import manager
 from app.models.conversations import ConversationType
 from app.redis_client import r
-
+from app.services.conversation_cache import ConversationCache
 
 import json
 
@@ -78,6 +78,12 @@ async def create_group(
             ))
     
     await db.commit()
+
+    await ConversationCache.sync_conversation(
+        conversation.id,
+        db
+    )
+
     return {
         "message":"Group created",
         "conversation_id":conversation.id
@@ -171,6 +177,11 @@ async def create_dm(
 
     await db.commit()
 
+    await ConversationCache.sync_conversation(
+        conversation.id,
+        db
+    )
+
     return {
         "message": "DM created",
         "conversation_id": conversation.id
@@ -189,6 +200,8 @@ async def join_group(
     
     if not conversation:
         raise HTTPException(status_code=404, detail="Group not found")
+    if conversation.type != ConversationType.GROUP:
+        raise HTTPException(status_code=403,detail="Not allowed to enter into group")
     is_user_joined = select(ConversationParticipants).where(
         ConversationParticipants.conversation_id == conversation.id,
         ConversationParticipants.user_id == token_user.id,
@@ -200,11 +213,14 @@ async def join_group(
     if already is not None:
         return {"message":"User already joined"}
     
-    db.add(ConversationParticipants(
+    participant = ConversationParticipants(
         conversation_id=conversation.id,
-        user_id = token_user.id,
+        user_id=token_user.id,
         role=ParticipantRole.MEMBER
-    ))
+    )
+
+    db.add(participant)
+
     if conversation.type == ConversationType.GROUP:
         msg = {
             "type": "SYSTEM",
@@ -218,12 +234,16 @@ async def join_group(
                         sender_id=0,
                         type=MessageType.SYSTEM,
                         message=f"{token_user.username} joined group"
-                    ))
+                ))
         await r.publish(
             f"group:{conversation.id}",
             json.dumps(msg)
         )
     await db.commit()
+    await ConversationCache.add_member(
+        conversation.id,
+        participant.user_id
+    )
     return {"message":"Joined group"}
 
 @router.post("/groups/add-members")
@@ -282,6 +302,7 @@ async def add_members(
     result = await db.execute(stmt_existing_members)
 
     existing_members_id = set(result.scalars().all())
+    added_members = []
     for user_id in members:
         if user_id == token_user.id:
             message.append(f"You cannot add yourself, ignoring adding {token_user.username}")
@@ -304,7 +325,7 @@ async def add_members(
                 role=ParticipantRole.MEMBER
             )
         )
-
+        added_members.append(user_id)
         existing_members_id.add(user_id)
         message_text = f"{token_user.username} added {user_exist.username}"
         msg = {
@@ -325,6 +346,11 @@ async def add_members(
             )
 
     await db.commit()
+    for user_id in added_members:
+        await ConversationCache.add_member(
+            conversation.id,
+            user_id
+        )
 
     return {
         "status":"OK",
@@ -397,8 +423,75 @@ async def remove_member(
     json.dumps(msg)
     )
     await db.commit()
+    await ConversationCache.remove_member(
+        conversation.id,
+        payload.member_id
+    )
     return {
         "message": message_text
+    }
+
+@router.delete("/groups/{group_id}/leave")
+async def leave_group(
+    group_id: int,
+    db: db_session,
+    token: str = Depends(oauth2_scheme)
+):
+
+    token_user = await get_current_user(db, token)
+    if not token_user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    stmt_conv = select(Conversation).where(
+        Conversation.id == group_id
+    )
+
+    conv_result = await db.execute(stmt_conv)
+    conversation = conv_result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    is_group = conversation.type == ConversationType.GROUP
+    stmt = select(ConversationParticipants).where(
+        ConversationParticipants.conversation_id == group_id,
+        ConversationParticipants.user_id == token_user.id
+    )
+
+    result = await db.execute(stmt)
+
+    participant = result.scalar_one_or_none()
+
+    if not participant:
+        raise HTTPException(404, "Not in group")
+
+    await db.delete(participant)
+
+    msg = {
+        "type": "system",
+        "event": "leave",
+        "user": token_user.username,
+        "message": f"{token_user.username} left group"
+    }
+    if is_group:
+        db.add(Message(
+                    conversation_id=int(group_id),
+                    sender_id=token_user.id,
+                    type=MessageType.SYSTEM,
+                    message=f"{token_user.username} left group"
+                ))
+        await r.publish(
+        f"conversation:{group_id}",
+        json.dumps(msg)
+        )
+    await db.commit()
+    await ConversationCache.remove_member(
+        group_id,
+        token_user.id
+    )
+
+    return {
+        "message": "Left group"
     }
 
 
@@ -608,64 +701,6 @@ async def get_group(
     }
 
 
-@router.delete("/groups/{group_id}/leave")
-async def leave_group(
-    group_id: int,
-    db: db_session,
-    token: str = Depends(oauth2_scheme)
-):
-
-    token_user = await get_current_user(db, token)
-    if not token_user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    stmt_conv = select(Conversation).where(
-        Conversation.id == group_id
-    )
-
-    conv_result = await db.execute(stmt_conv)
-    conversation = conv_result.scalar_one_or_none()
-
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    is_group = conversation.type == ConversationType.GROUP
-    stmt = select(ConversationParticipants).where(
-        ConversationParticipants.conversation_id == group_id,
-        ConversationParticipants.user_id == token_user.id
-    )
-
-    result = await db.execute(stmt)
-
-    participant = result.scalar_one_or_none()
-
-    if not participant:
-        raise HTTPException(404, "Not in group")
-
-    await db.delete(participant)
-
-    msg = {
-        "type": "system",
-        "event": "leave",
-        "user": token_user.username,
-        "message": f"{token_user.username} left group"
-    }
-    if is_group:
-        db.add(Message(
-                    conversation_id=int(group_id),
-                    sender_id=token_user.id,
-                    type=MessageType.SYSTEM,
-                    message=f"{token_user.username} left group"
-                ))
-        await r.publish(
-        f"conversation:{group_id}",
-        json.dumps(msg)
-        )
-    await db.commit()
-
-    return {
-        "message": "Left group"
-    }
 
 @router.get('/groups/{group_id}/fetch-members',response_model = list[ConversationParticipantResponse])
 async def fetch_group_members(

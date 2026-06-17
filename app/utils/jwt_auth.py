@@ -8,21 +8,24 @@ ACCESS_EXP_MIN = 15
 REFRESH_EXP_DAYS = 7
 
 
-def create_access_token(data: dict):
-    payload = data.copy()
-    payload.update({
+def create_access_token(user):
+    payload = {
+        "sub": str(user.id),
+        "username": user.username,
+        "role": user.role.value,
         "type": "access",
         "exp": datetime.utcnow() + timedelta(minutes=ACCESS_EXP_MIN)
-    })
+    }
+
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-
-def create_refresh_token(data: dict):
-    payload = data.copy()
-    payload.update({
+def create_refresh_token(user):
+    payload = {
+        "sub": str(user.id),
         "type": "refresh",
         "exp": datetime.utcnow() + timedelta(days=REFRESH_EXP_DAYS)
-    })
+    }
+
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
