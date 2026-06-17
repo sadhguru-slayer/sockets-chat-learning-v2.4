@@ -4,7 +4,7 @@ This plan outlines how to address the 5 architectural improvements minimally, to
 
 ## Proposed Changes
 
-### 1. Database Connection Leak
+### 1. Database Connection Leak 🟢🟢🟢 Completed, EASY
 **Problem**: Keeping a database connection open for the entire lifetime of a WebSocket quickly exhausts the database connection pool.
 **Fix**: 
 - Remove the `db: db_session` dependency from `websocket_endpoint`.
@@ -17,7 +17,7 @@ This plan outlines how to address the 5 architectural improvements minimally, to
 
 ---
 
-### 2. Startup Race Conditions & N+1 Queries
+### 2. Startup Race Conditions & N+1 Queries 🟢🟢🟢 Completed, EASY
 **Problem**: Multiple workers trigger `sync_all` at startup, causing DB contention. `sync_all` performs N+1 queries.
 **Fix**:
 - Add a distributed lock in `main.py` using Redis `SET NX` so only one worker process triggers the sync.
@@ -31,7 +31,7 @@ This plan outlines how to address the 5 architectural improvements minimally, to
 
 ---
 
-### 3. Redis Memory Leak: Stale Presence Watchers
+### 3. Redis Memory Leak: Stale Presence Watchers 🟢🟢🟢 Completed, MEDIUM, as I have revisit sockets and other pages to have consisitency
 **Problem**: Users who disconnect abruptly leave behind their user IDs in other users' `presence_watchers` Redis sets, causing memory leaks.
 **Fix**:
 - Track `watched_users` as a Python `set` locally on the `Connection` dataclass.
@@ -46,7 +46,7 @@ This plan outlines how to address the 5 architectural improvements minimally, to
 
 ---
 
-### 4. Missing Redis Pipelining
+### 4. Missing Redis Pipelining 🟢🟢🟢 Completed, EASY
 **Problem**: Executing multiple consecutive `await r.sadd(...)` calls incurs network delays.
 **Fix**: 
 - Batch Redis operations in `ConversationCache.sync_conversation` and `sync_all` using `async with r.pipeline() as pipe:`.
